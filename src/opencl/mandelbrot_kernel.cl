@@ -101,9 +101,11 @@ float4 mapColor_Ocean(int iterations, int max_iterations) {
     float t = (float)iterations / (float)max_iterations;
     t = sin(t * 3.14159f * 0.5f); // Smoother distribution
     
-    float r = 0.1f + t * (0.3f + 0.7f * sin(t * 6.28f));
-    float g = 0.2f + t * (0.6f + 0.4f * cos(t * 4.0f));
-    float b = 0.4f + t * (0.6f + 0.4f * sin(t * 8.0f));
+    // The waveforms overshoot [0, 1]; OpenGL clamped on upload, but callers
+    // reading the buffer directly need the values already in range.
+    float r = clamp(0.1f + t * (0.3f + 0.7f * sin(t * 6.28f)), 0.0f, 1.0f);
+    float g = clamp(0.2f + t * (0.6f + 0.4f * cos(t * 4.0f)), 0.0f, 1.0f);
+    float b = clamp(0.4f + t * (0.6f + 0.4f * sin(t * 8.0f)), 0.0f, 1.0f);
     
     return (float4)(r, g, b, 1.0f);
 }

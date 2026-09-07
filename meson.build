@@ -1,5 +1,5 @@
 project('parallelbrot', 'cpp',
-  version: '0.1.1',
+  version: '0.2.0',
   license: 'MIT',
   meson_version: '>=1.3.0',
   default_options: ['cpp_std=c++17', 'buildtype=release', 'warning_level=2'],
@@ -46,6 +46,6 @@ py.extension_module('_core',
 )
 
 py.install_sources(
-  ['src/parallelbrot/__init__.py', 'src/parallelbrot/cli.py', 'src/parallelbrot/py.typed'],
+  ['src/parallelbrot/__init__.py', 'src/parallelbrot/cli.py', 'src/parallelbrot/viewer.py', 'src/parallelbrot/py.typed'],
   subdir: 'parallelbrot',
 )

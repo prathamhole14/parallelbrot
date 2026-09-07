@@ -53,8 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="parallelbrot",
         description="Render the Mandelbrot set to a PNG.",
-        epilog="With no arguments, writes a 1920x1080 view of the whole set "
-               "to mandelbrot.png.",
+        epilog="With no arguments, writes a 1920x1080 view of the whole set to "
+               "mandelbrot.png. Use -I for an interactive window.",
     )
     parser.add_argument("-o", "--output", default="mandelbrot.png", metavar="PATH")
     parser.add_argument("-s", "--size", type=_size, default=(1920, 1080), metavar="WxH")
@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-i", "--iterations", type=int, default=128)
     parser.add_argument("--colors", choices=COLOR_SCHEMES, default="fire")
     parser.add_argument("-b", "--backend", choices=("auto", "cpu", "opencl", "cuda"), default="auto")
+    parser.add_argument("-I", "--interactive", action="store_true",
+                        help="open a pan-and-zoom window instead of writing a file")
     parser.add_argument("-q", "--quiet", action="store_true", help="suppress the summary line")
     parser.add_argument("--info", action="store_true", help="report available backends and exit")
     parser.add_argument("--version", action="version", version=f"parallelbrot {__version__}")
@@ -77,6 +79,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     width, height = args.size
+
+    if args.interactive:
+        from .viewer import run
+        return run(width=width, height=height, center=args.center, zoom=args.zoom,
+                   max_iterations=args.iterations, color_scheme=args.colors,
+                   backend=args.backend)
     started = time.perf_counter()
     try:
         image = render(

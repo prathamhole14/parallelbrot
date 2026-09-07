@@ -15,6 +15,10 @@
 namespace parallelbrot {
 namespace {
 
+// The palette expressions promote to double via <cmath>; this pins the
+// result back to a float in range.
+float clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+
 // ── Palette 0: Ultra Fractal ────────────────────────────────
 void map_color_ultra_fractal(int iterations, int max_iterations,
                              float& r, float& g, float& b) {
@@ -109,9 +113,11 @@ void map_color_ocean(int iterations, int max_iterations,
     float t = (float)iterations / (float)max_iterations;
     t = sin(t * 3.14159f * 0.5f); // Smoother distribution
 
-    r = 0.1f + t * (0.3f + 0.7f * sin(t * 6.28f));
-    g = 0.2f + t * (0.6f + 0.4f * cos(t * 4.0f));
-    b = 0.4f + t * (0.6f + 0.4f * sin(t * 8.0f));
+    // The waveforms overshoot [0, 1]; OpenGL clamped on upload, but callers
+    // reading the buffer directly need the values already in range.
+    r = clamp01(0.1f + t * (0.3f + 0.7f * sin(t * 6.28f)));
+    g = clamp01(0.2f + t * (0.6f + 0.4f * cos(t * 4.0f)));
+    b = clamp01(0.4f + t * (0.6f + 0.4f * sin(t * 8.0f)));
 }
 
 // ── Palette 3: Psychedelic ──────────────────────────────────

@@ -105,9 +105,11 @@ __device__ float4 mapColor_Ocean(int iterations, int max_iterations) {
     float t = (float)iterations / (float)max_iterations;
     t = sinf(t * 3.14159f * 0.5f); // Smoother distribution
     
-    float r = 0.1f + t * (0.3f + 0.7f * sinf(t * 6.28f));
-    float g = 0.2f + t * (0.6f + 0.4f * cosf(t * 4.0f));
-    float b = 0.4f + t * (0.6f + 0.4f * sinf(t * 8.0f));
+    // The waveforms overshoot [0, 1]; OpenGL clamped on upload, but callers
+    // reading the buffer directly need the values already in range.
+    float r = __saturatef(0.1f + t * (0.3f + 0.7f * sinf(t * 6.28f)));
+    float g = __saturatef(0.2f + t * (0.6f + 0.4f * cosf(t * 4.0f)));
+    float b = __saturatef(0.4f + t * (0.6f + 0.4f * sinf(t * 8.0f)));
     
     return make_float4(r, g, b, 1.0f);
 }

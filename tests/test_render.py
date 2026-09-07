@@ -39,6 +39,13 @@ def test_origin():
 
 
 @pytest.mark.parametrize("scheme", pb.COLOR_SCHEMES)
+def test_every_scheme_stays_in_range(scheme):
+    """Ocean's waveforms overshoot [0, 1] unless the palette clamps."""
+    image = pb.render(200, 150, zoom=1.5, max_iterations=256, color_scheme=scheme)
+    assert image.min() >= 0.0 and image.max() <= 1.0
+
+
+@pytest.mark.parametrize("scheme", pb.COLOR_SCHEMES)
 def test_color_schemes_differ(scheme):
     assert pb.render(16, 16, color_scheme=scheme).shape == (16, 16, 4)
     assert len({pb.render(16, 16, color_scheme=s).tobytes() for s in pb.COLOR_SCHEMES}) == 4

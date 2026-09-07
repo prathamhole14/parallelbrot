@@ -22,8 +22,11 @@ classifiers = [
 ]
 dependencies = ["numpy>=1.21"]
 
+[project.optional-dependencies]
+viewer = ["matplotlib>=3.5"]
+
 [dependency-groups]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "matplotlib>=3.5"]
 
 [project.scripts]
 parallelbrot = "parallelbrot.cli:main"

@@ -41,7 +41,12 @@ parallelbrot                                  # 1920x1080 -> mandelbrot.png
 parallelbrot -o seahorse.png -s 3840x2160 \
     -c -0.743644,0.131826 -z 4000 -i 1000 --colors ocean
 parallelbrot --info                           # what backends are usable here
+parallelbrot -I                               # interactive pan-and-zoom window
 ```
+
+`-I` opens a live viewer: drag to pan, scroll to zoom on the cursor, arrows to
+pan, `+`/`-` for iterations, `C` to cycle palettes, `R` to reset, `Q` to quit.
+It needs matplotlib — `pip install 'parallelbrot[viewer]'`.
 
 | Option | Default | Meaning |
 |--------|---------|---------|
@@ -52,6 +57,7 @@ parallelbrot --info                           # what backends are usable here
 | `-i`, `--iterations` | `128` | Escape limit |
 | `--colors` | `fire` | Palette |
 | `-b`, `--backend` | `auto` | `auto`, `cpu`, `opencl`, `cuda` |
+| `-I`, `--interactive` | | Open a window instead of writing a file |
 | `-q`, `--quiet` | | Suppress the summary line |
 
 PNG writing is built in, so the CLI needs nothing beyond NumPy.
@@ -210,9 +216,15 @@ uv run python -c "import parallelbrot as p; print(p.compiled_backends())"
 Without uv:
 
 ```bash
-pip install -e .             # rebuilds the C++ on import when sources change
+pip install -U meson meson-python ninja
+pip install -e . --no-build-isolation    # rebuilds the C++ on import
 pytest
 ```
+
+`--no-build-isolation` matters. A plain `pip install -e .` records the path to
+the `ninja` inside pip's temporary build environment, which pip then deletes,
+so every later import fails with `FileNotFoundError: .../pip-build-env-*/ninja`.
+Reinstall with the flag above to repair it.
 
 Build options are Meson features, so absent tooling degrades the build rather
 than failing it:
