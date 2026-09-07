@@ -26,8 +26,8 @@ dependencies = ["numpy>=1.21"]
 dev = ["pytest>=7"]
 
 [project.urls]
-Homepage = "https://github.com/prathamhole/parallelbrot"
-Source = "https://github.com/prathamhole/parallelbrot"
+Homepage = "https://github.com/prathamhole14/parallelbrot"
+Source = "https://github.com/prathamhole14/parallelbrot"
 
 [tool.meson-python]
 # Tags the wheel cp39-abi3 instead of cp3XX-cp3XX. meson.build's limited_api
