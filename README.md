@@ -20,14 +20,14 @@ For other distros, replace `ubuntu` with `fedora` or `arch`.
 ### 2 — Build & Run
 
 ```bash
-make opencl && build/mandelbrot_opencl   # Any GPU — recommended
-make cuda   && build/mandelbrot_cuda     # NVIDIA only (fastest)
-make cpu    && build/mandelbrot_cpu      # CPU fallback
+make opencl && bin/mandelbrot_opencl   # Any GPU — recommended
+make cuda   && bin/mandelbrot_cuda     # NVIDIA only (fastest)
+make cpu    && bin/mandelbrot_cpu      # CPU fallback
 make all                                 # Build opencl + cpu
 make clean                              # Remove build artifacts
 ```
 
-> **Windows:** executables are built as `build/mandelbrot_*.exe` automatically.
+> **Windows:** executables are built as `bin/mandelbrot_*.exe` automatically.
 
 ---
 

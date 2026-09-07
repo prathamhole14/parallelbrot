@@ -1,0 +1,4 @@
+option('opencl', type: 'feature', value: 'auto',
+       description: 'Build the OpenCL backend')
+option('openmp', type: 'feature', value: 'auto',
+       description: 'Parallelise the CPU backend with OpenMP')

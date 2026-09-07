@@ -9,7 +9,7 @@
 */
 
 #include "parallelbrot/core.hpp"
-#include "parallelbrot/opencl_kernel_source.hpp"
+#include "opencl_kernel_source.hpp"
 
 #include <CL/cl.h>
 

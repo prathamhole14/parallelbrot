@@ -32,22 +32,22 @@ fi
 echo
 
 echo "3. Available executables:"
-ls -la build/mandelbrot_* 2>/dev/null | grep -E "^-rwx" | awk '{print "  " $9 " (" $5 " bytes)"}' || echo "  No executables found"
+ls -la bin/mandelbrot_* 2>/dev/null | grep -E "^-rwx" | awk '{print "  " $9 " (" $5 " bytes)"}' || echo "  No executables found"
 echo
 
 echo "4. Recommended version for your system:"
 if [ "$CUDA_AVAILABLE" = true ] && nvidia-smi > /dev/null 2>&1; then
-    echo "  🚀 Use build/mandelbrot_cuda (CUDA - Maximum NVIDIA performance)"
+    echo "  🚀 Use bin/mandelbrot_cuda (CUDA - Maximum NVIDIA performance)"
 elif make check-opencl 2>/dev/null | grep -q "NVIDIA\|AMD\|Intel"; then
-    echo "  ⚡ Use build/mandelbrot_opencl (OpenCL - Good GPU performance)" 
+    echo "  ⚡ Use bin/mandelbrot_opencl (OpenCL - Good GPU performance)" 
 else
-    echo "  💻 Use build/mandelbrot_cpu (CPU - Fallback option)"
+    echo "  💻 Use bin/mandelbrot_cpu (CPU - Fallback option)"
 fi
 
 echo
 echo "5. Quick start:"
-echo "  build/mandelbrot_opencl   # Run OpenCL version (recommended for most)"
-echo "  build/mandelbrot_cuda     # Run CUDA version (NVIDIA only, max performance)"
-echo "  build/mandelbrot_cpu      # Run CPU version (always works)"
+echo "  bin/mandelbrot_opencl   # Run OpenCL version (recommended for most)"
+echo "  bin/mandelbrot_cuda     # Run CUDA version (NVIDIA only, max performance)"
+echo "  bin/mandelbrot_cpu      # Run CPU version (always works)"
 echo
 echo "Press Ctrl+C to exit any running program."

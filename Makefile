@@ -85,7 +85,7 @@ OPENCL_DIR = $(SRC_DIR)/opencl
 CUDA_DIR   = $(SRC_DIR)/cuda
 CPU_DIR    = $(SRC_DIR)/cpu
 CORE_DIR   = $(SRC_DIR)/core
-BUILD_DIR  = build
+BUILD_DIR  = bin
 
 TARGET_OC   = $(BUILD_DIR)/mandelbrot_opencl$(EXE)
 TARGET_CPU  = $(BUILD_DIR)/mandelbrot_cpu$(EXE)
@@ -105,7 +105,7 @@ KERNEL_FILE  = $(OPENCL_DIR)/mandelbrot_kernel.cl
 
 # The .cl source is baked into the binary as a raw string literal so that
 # nothing has to locate it on disk at runtime.
-KERNEL_HEADER = $(INC_DIR)/parallelbrot/opencl_kernel_source.hpp
+KERNEL_HEADER = $(BUILD_DIR)/gen/opencl_kernel_source.hpp
 EMBED_SCRIPT  = scripts/embed_kernel.sh
 
 # ────────────────────────────────────────────────────────────
@@ -122,13 +122,13 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 # Regenerate the embedded kernel header whenever the .cl source changes.
-$(KERNEL_HEADER): $(KERNEL_FILE) $(EMBED_SCRIPT)
+$(KERNEL_HEADER): $(KERNEL_FILE) $(EMBED_SCRIPT) | $(BUILD_DIR)
 	sh $(EMBED_SCRIPT) $(KERNEL_FILE) $@
 
 kernel-header: $(KERNEL_HEADER)
 
 $(TARGET_OC): $(SOURCES_OC) $(CORE_OC) $(CORE_CPU) $(KERNEL_HEADER) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -DPARALLELBROT_WITH_OPENCL $(OPENMP_FLAGS) \
+	$(CC) $(CFLAGS) -I$(dir $(KERNEL_HEADER)) -DPARALLELBROT_WITH_OPENCL $(OPENMP_FLAGS) \
 	    $(SOURCES_OC) $(CORE_OC) $(CORE_CPU) -o $@ $(LIBS)
 
 $(TARGET_CPU): $(SOURCES_CPU) $(CORE_CPU) | $(BUILD_DIR)
@@ -152,9 +152,7 @@ run: $(TARGET_OC)
 	./$(TARGET_OC)
 
 clean:
-	rm -f $(BUILD_DIR)/*
-	rm -f $(KERNEL_HEADER)
-	rmdir $(BUILD_DIR) 2>/dev/null || true
+	rm -rf $(BUILD_DIR)
 
 # ────────────────────────────────────────────────────────────
 # Dependency Installation Helpers

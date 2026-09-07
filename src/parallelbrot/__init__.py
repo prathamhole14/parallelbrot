@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
+
 import numpy as np
 
 from . import _core
@@ -14,9 +16,13 @@ __all__ = [
     "has_openmp",
     "device_name",
     "COLOR_SCHEMES",
+    "__version__",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("parallelbrot")
+except PackageNotFoundError:  # running from a source tree
+    __version__ = "0.0.0.dev0"
 
 COLOR_SCHEMES = ("ultra_fractal", "fire", "ocean", "psychedelic")
 
