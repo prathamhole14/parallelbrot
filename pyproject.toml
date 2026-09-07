@@ -66,7 +66,19 @@ manylinux-aarch64-image = "manylinux_2_28"
 # (the feature is `auto`) but renders single-threaded, so install it and let
 # delocate vendor it into the wheel.
 before-all = "brew install libomp"
-environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
+
+# Homebrew's libomp bottle is built for a newer macOS than cibuildwheel's
+# default wheel target, and delocate refuses to vendor a library whose
+# minimum exceeds the wheel tag. Raise the floor to match the bottle rather
+# than give up the ~13x OpenMP speedup, which on macOS is the whole package:
+# PyPI wheels carry no GPU backend. Bump these when Homebrew moves.
+[[tool.cibuildwheel.overrides]]
+select = "*-macosx_arm64"
+environment = { MACOSX_DEPLOYMENT_TARGET = "15.0" }
+
+[[tool.cibuildwheel.overrides]]
+select = "*-macosx_x86_64"
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0" }
 
 [tool.cibuildwheel.windows]
 # cibuildwheel does not repair Windows wheels by default.
