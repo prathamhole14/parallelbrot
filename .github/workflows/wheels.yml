@@ -6,6 +6,14 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish_testpypi:
+        description: 'Publish the built artifacts to TestPyPI'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -77,3 +85,68 @@ jobs:
           python -m pip install --only-binary=:all: wheelhouse/*.whl
           python -c "import parallelbrot as p; print(p.__version__, p.compiled_backends(), 'openmp=', p.has_openmp())"
           pytest tests -q
+
+  # Both publish jobs use trusted publishing: PyPI verifies this workflow's
+  # OIDC identity, so there is no API token stored anywhere. Each needs a
+  # matching publisher registered on the index, and the environment name
+  # below must match the one configured there.
+  testpypi:
+    name: Publish to TestPyPI
+    needs: [wheels, sdist, abi3]
+    if: inputs.publish_testpypi
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/parallelbrot
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  pypi:
+    name: Publish to PyPI
+    needs: [wheels, sdist, abi3]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/parallelbrot
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      # The version lives in meson.build, so a mistyped tag would otherwise
+      # publish under a version nobody asked for. Checking against the built
+      # sdist filename catches the mismatch before upload.
+      - name: Check the tag matches the built version
+        run: |
+          expected="parallelbrot-${GITHUB_REF_NAME#v}.tar.gz"
+          if [ ! -f "dist/$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME expects dist/$expected, which was not built."
+            echo "Bump version in meson.build, or retag. Built artifacts:"
+            ls dist
+            exit 1
+          fi
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
