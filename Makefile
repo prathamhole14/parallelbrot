@@ -4,8 +4,8 @@
 
 CC        = g++
 NVCC      = nvcc
-CFLAGS    = -std=c++17 -O3 -Wall -Wextra -DCL_TARGET_OPENCL_VERSION=120
-NVCCFLAGS = -std=c++17 -O3
+CFLAGS    = -std=c++17 -O3 -Wall -Wextra -DCL_TARGET_OPENCL_VERSION=120 -Iinclude
+NVCCFLAGS = -std=c++17 -O3 -Iinclude
 
 # ────────────────────────────────────────────────────────────
 # OS Detection
@@ -65,28 +65,53 @@ ifeq ($(OS),Windows_NT)
 endif
 
 # ────────────────────────────────────────────────────────────
+# OpenMP — parallelises the CPU core across rows
+# ────────────────────────────────────────────────────────────
+# Apple Clang has no built-in OpenMP, so it stays off by default on macOS.
+# To enable it there: brew install libomp, then
+#   make cpu OPENMP_FLAGS="-Xpreprocessor -fopenmp -lomp"
+ifeq ($(UNAME_S),Darwin)
+    OPENMP_FLAGS ?=
+else
+    OPENMP_FLAGS ?= -fopenmp
+endif
+
+# ────────────────────────────────────────────────────────────
 # Paths & Targets
 # ────────────────────────────────────────────────────────────
 SRC_DIR    = src
+INC_DIR    = include
 OPENCL_DIR = $(SRC_DIR)/opencl
 CUDA_DIR   = $(SRC_DIR)/cuda
 CPU_DIR    = $(SRC_DIR)/cpu
+CORE_DIR   = $(SRC_DIR)/core
 BUILD_DIR  = build
 
 TARGET_OC   = $(BUILD_DIR)/mandelbrot_opencl$(EXE)
 TARGET_CPU  = $(BUILD_DIR)/mandelbrot_cpu$(EXE)
 TARGET_CUDA = $(BUILD_DIR)/mandelbrot_cuda$(EXE)
 
+# Backend-agnostic cores (no GLFW/OpenGL)
+CORE_CPU     = $(CORE_DIR)/mandelbrot_cpu_core.cpp
+CORE_OC      = $(CORE_DIR)/mandelbrot_opencl_core.cpp
+CORE_CUDA    = $(CORE_DIR)/mandelbrot_cuda_core.cu
+
+# Interactive frontends (windowing and presentation only)
 SOURCES_OC   = $(OPENCL_DIR)/mandelbrot_opencl.cpp
 SOURCES_CPU  = $(CPU_DIR)/mandelbrot_cpu.cpp
 SOURCES_CUDA = $(CUDA_DIR)/mandelbrot_cuda.cpp
 CUDA_KERNEL  = $(CUDA_DIR)/mandelbrot_kernel.cu
 KERNEL_FILE  = $(OPENCL_DIR)/mandelbrot_kernel.cl
 
+# The .cl source is baked into the binary as a raw string literal so that
+# nothing has to locate it on disk at runtime.
+KERNEL_HEADER = $(INC_DIR)/parallelbrot/opencl_kernel_source.hpp
+EMBED_SCRIPT  = scripts/embed_kernel.sh
+
 # ────────────────────────────────────────────────────────────
 # Build Rules
 # ────────────────────────────────────────────────────────────
-.PHONY: all opencl cpu cuda clean run help \
+.PHONY: all opencl cpu cuda clean run help kernel-header \
         install-deps-ubuntu install-deps-fedora install-deps-arch install-deps-macos \
         install-cuda-ubuntu install-cuda-fedora install-cuda-arch \
         check-opencl check-cuda release
@@ -96,14 +121,22 @@ all: $(TARGET_OC) $(TARGET_CPU)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(TARGET_OC): $(SOURCES_OC) $(KERNEL_FILE) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(SOURCES_OC) -o $@ $(LIBS)
+# Regenerate the embedded kernel header whenever the .cl source changes.
+$(KERNEL_HEADER): $(KERNEL_FILE) $(EMBED_SCRIPT)
+	sh $(EMBED_SCRIPT) $(KERNEL_FILE) $@
 
-$(TARGET_CPU): $(SOURCES_CPU) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(SOURCES_CPU) -o $@ $(CPU_LIBS)
+kernel-header: $(KERNEL_HEADER)
 
-$(TARGET_CUDA): $(SOURCES_CUDA) $(CUDA_KERNEL) | $(BUILD_DIR)
-	$(NVCC) $(NVCCFLAGS) $(CUDA_KERNEL) $(SOURCES_CUDA) -o $@ $(CUDA_LIBS)
+$(TARGET_OC): $(SOURCES_OC) $(CORE_OC) $(CORE_CPU) $(KERNEL_HEADER) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -DPARALLELBROT_WITH_OPENCL $(OPENMP_FLAGS) \
+	    $(SOURCES_OC) $(CORE_OC) $(CORE_CPU) -o $@ $(LIBS)
+
+$(TARGET_CPU): $(SOURCES_CPU) $(CORE_CPU) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(OPENMP_FLAGS) $(SOURCES_CPU) $(CORE_CPU) -o $@ $(CPU_LIBS)
+
+$(TARGET_CUDA): $(SOURCES_CUDA) $(CUDA_KERNEL) $(CORE_CUDA) $(CORE_CPU) | $(BUILD_DIR)
+	$(NVCC) $(NVCCFLAGS) -DPARALLELBROT_WITH_CUDA \
+	    $(CUDA_KERNEL) $(CORE_CUDA) $(SOURCES_CUDA) $(CORE_CPU) -o $@ $(CUDA_LIBS)
 
 opencl:    $(TARGET_OC)
 cpu:       $(TARGET_CPU)
@@ -120,6 +153,7 @@ run: $(TARGET_OC)
 
 clean:
 	rm -f $(BUILD_DIR)/*
+	rm -f $(KERNEL_HEADER)
 	rmdir $(BUILD_DIR) 2>/dev/null || true
 
 # ────────────────────────────────────────────────────────────

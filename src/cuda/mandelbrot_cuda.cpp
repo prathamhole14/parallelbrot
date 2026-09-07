@@ -16,6 +16,8 @@
 	- ESC: Exit
 */
 
+#include "parallelbrot/core.hpp"
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <cuda_runtime.h>
@@ -28,6 +30,10 @@
 #include <algorithm>
 
 // Forward declarations for CUDA kernel functions
+// Kernel launch and device memory now live behind parallelbrot::CudaRenderer
+// in src/core/mandelbrot_cuda_core.cu. The declaration below is kept only for
+// reference of the underlying entry point.
+#if 0
 extern "C" {
     void launch_mandelbrot_kernel(float4* d_output,
                                  int width,
@@ -38,6 +44,7 @@ extern "C" {
                                  int max_iterations,
                                  int color_scheme);
 }
+#endif
 
 class CUDAMandelbrotRenderer {
 private:
@@ -49,8 +56,11 @@ private:
     // OpenGL objects
     GLuint vao, vbo, texture, shader_program;
     
-    // CUDA objects
-    float4* d_output_buffer;
+    // CUDA compute core — owns the device selection and the device output
+    // buffer, and grows that buffer as the window resizes.
+    parallelbrot::CudaRenderer compute;
+    
+    // OpenGL interop objects (presentation side only)
     cudaGraphicsResource* cuda_gl_resource;
     cudaArray* cuda_array;
     bool use_gl_interop = true;
@@ -77,7 +87,6 @@ public:
     CUDAMandelbrotRenderer() {
         last_frame_time = std::chrono::high_resolution_clock::now();
         cpu_buffer.resize(window_width * window_height * 4); // RGBA
-        d_output_buffer = nullptr;
         cuda_gl_resource = nullptr;
         cuda_array = nullptr;
     }
@@ -88,9 +97,12 @@ public:
     
     bool initialize() {
         // Initialize CUDA first
-        if (!setupCUDA()) {
+        std::string error;
+        if (!compute.initialize(&error)) {
+            std::cerr << error << std::endl;
             return false;
         }
+        std::cout << "CUDA Device: " << compute.device_name() << std::endl;
         
         // Initialize GLFW
         if (!glfwInit()) {
@@ -159,39 +171,6 @@ public:
     }
     
 private:
-    bool setupCUDA() {
-        cudaError_t error;
-        
-        // Initialize CUDA
-        error = cudaSetDevice(0);
-        if (error != cudaSuccess) {
-            std::cerr << "CUDA initialization failed: " << cudaGetErrorString(error) << std::endl;
-            return false;
-        }
-        
-        // Get device properties
-        cudaDeviceProp prop;
-        error = cudaGetDeviceProperties(&prop, 0);
-        if (error != cudaSuccess) {
-            std::cerr << "Failed to get device properties: " << cudaGetErrorString(error) << std::endl;
-            return false;
-        }
-        
-        std::cout << "CUDA Device: " << prop.name << std::endl;
-        std::cout << "Compute Capability: " << prop.major << "." << prop.minor << std::endl;
-        std::cout << "Memory: " << prop.totalGlobalMem / (1024*1024) << " MB" << std::endl;
-        
-        // Allocate device memory for output buffer
-        size_t buffer_size = window_width * window_height * sizeof(float4);
-        error = cudaMalloc(&d_output_buffer, buffer_size);
-        if (error != cudaSuccess) {
-            std::cerr << "Failed to allocate CUDA memory: " << cudaGetErrorString(error) << std::endl;
-            return false;
-        }
-        
-        return true;
-    }
-    
     bool setupOpenGL() {
         // Create vertex array object
         glGenVertexArrays(1, &vao);
@@ -349,24 +328,32 @@ private:
             center_y -= pan_speed;
         }
         
-        // Launch CUDA kernel to compute Mandelbrot set
-        launch_mandelbrot_kernel(
-            d_output_buffer,
-            window_width,
-            window_height,
-            center_x,
-            center_y,
-            zoom,
-            max_iterations,
-            color_scheme
-        );
+        // GPU computation — delegated to the shared core.
+        parallelbrot::View view;
+        view.width          = window_width;
+        view.height         = window_height;
+        view.center_x       = center_x;
+        view.center_y       = center_y;
+        view.zoom           = zoom;
+        view.max_iterations = max_iterations;
+        view.color_scheme   = color_scheme;
+        
+        std::string error;
         
         // Copy result to OpenGL texture
         if (use_gl_interop) {
+            // Interop path: keep the pixels on the device and blit straight
+            // into the texture, so render_device() is used rather than the
+            // host-copy render().
+            if (!compute.render_device(view, &error)) {
+                std::cerr << error << std::endl;
+                return;
+            }
+            
             cudaGraphicsMapResources(1, &cuda_gl_resource);
             cudaGraphicsSubResourceGetMappedArray(&cuda_array, cuda_gl_resource, 0, 0);
             
-            cudaMemcpy2DToArray(cuda_array, 0, 0, d_output_buffer, 
+            cudaMemcpy2DToArray(cuda_array, 0, 0, compute.device_buffer(),
                                window_width * sizeof(float4),
                                window_width * sizeof(float4),
                                window_height,
@@ -374,9 +361,10 @@ private:
             
             cudaGraphicsUnmapResources(1, &cuda_gl_resource);
         } else {
-            cudaMemcpy(cpu_buffer.data(), d_output_buffer, 
-                      window_width * window_height * sizeof(float4), 
-                      cudaMemcpyDeviceToHost);
+            if (!compute.render(view, cpu_buffer.data(), &error)) {
+                std::cerr << error << std::endl;
+                return;
+            }
             
             glBindTexture(GL_TEXTURE_2D, texture);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, window_width, window_height, 
@@ -398,11 +386,7 @@ private:
     }
     
     void cleanup() {
-        if (d_output_buffer) {
-            cudaFree(d_output_buffer);
-            d_output_buffer = nullptr;
-        }
-        
+        // The CUDA core frees its device buffer in its destructor.
         if (cuda_gl_resource) {
             cudaGraphicsUnregisterResource(cuda_gl_resource);
             cuda_gl_resource = nullptr;
@@ -434,8 +418,13 @@ private:
         renderer->window_width = width;
         renderer->window_height = height;
         
-        // Reallocate CUDA buffer and texture
-        // Note: In a full implementation, you'd want to handle this properly
+        // The CUDA core grows its own device buffer on the next render. The
+        // host-side fallback buffer has to keep up as well, otherwise the
+        // non-interop path writes past the end of it after the window grows.
+        renderer->cpu_buffer.resize((std::size_t)width * (std::size_t)height * 4);
+        
+        glBindTexture(GL_TEXTURE_2D, renderer->texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
     }
     
     static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {

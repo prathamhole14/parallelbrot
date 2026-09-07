@@ -4,15 +4,14 @@
 	Uses OpenCL for computation and CPU for display conversion
 */
 
+#include "parallelbrot/core.hpp"
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
-#include <CL/cl.h>
 #include <iostream>
-#include <fstream>
 #include <vector>
 #include <chrono>
 #include <cmath>
-#include <cstring>
 #include <string>
 
 class MandelbrotRenderer {
@@ -25,14 +24,10 @@ private:
     // OpenGL objects
     GLuint vao, vbo, texture, shader_program;
     
-    // OpenCL objects
-    cl_platform_id platform;
-    cl_device_id device;
-    cl_context context;
-    cl_command_queue queue;
-    cl_program program;
-    cl_kernel kernel;
-    cl_mem cl_buffer;
+    // OpenCL compute core — owns the device, queue, program and device
+    // buffer. Resizing is handled internally, so the resize callback below
+    // no longer has to reallocate anything.
+    parallelbrot::OpenCLRenderer compute;
     
     // CPU buffer for results
     std::vector<float> cpu_buffer;
@@ -103,9 +98,12 @@ public:
         }
         
         // Setup OpenCL
-        if (!setupOpenCL()) {
+        std::string error;
+        if (!compute.initialize(&error)) {
+            std::cerr << error << std::endl;
             return false;
         }
+        std::cout << "Using OpenCL device: " << compute.device_name() << std::endl;
         
         return true;
     }
@@ -176,116 +174,6 @@ private:
         // Create and compile shaders
         shader_program = createShaderProgram();
         if (shader_program == 0) {
-            return false;
-        }
-        
-        return true;
-    }
-    
-    bool setupOpenCL() {
-        cl_int err;
-        
-        // Get platforms
-        cl_uint num_platforms;
-        err = clGetPlatformIDs(0, nullptr, &num_platforms);
-        if (err != CL_SUCCESS || num_platforms == 0) {
-            std::cerr << "No OpenCL platforms found\n";
-            return false;
-        }
-        
-        std::vector<cl_platform_id> platforms(num_platforms);
-        err = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to get OpenCL platforms\n";
-            return false;
-        }
-        
-        // Try to find NVIDIA platform first
-        platform = platforms[0];
-        for (const auto& plat : platforms) {
-            char name[256];
-            clGetPlatformInfo(plat, CL_PLATFORM_NAME, sizeof(name), name, nullptr);
-            std::cout << "Found platform: " << name << std::endl;
-            if (strstr(name, "NVIDIA") != nullptr) {
-                platform = plat;
-                std::cout << "Selected NVIDIA platform" << std::endl;
-                break;
-            }
-        }
-        
-        // Get devices
-        cl_uint num_devices;
-        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
-        if (err != CL_SUCCESS || num_devices == 0) {
-            err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, 0, nullptr, &num_devices);
-            if (err != CL_SUCCESS || num_devices == 0) {
-                std::cerr << "No OpenCL devices found\n";
-                return false;
-            }
-        }
-        
-        std::vector<cl_device_id> devices(num_devices);
-        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, num_devices, devices.data(), nullptr);
-        if (err != CL_SUCCESS) {
-            err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, num_devices, devices.data(), nullptr);
-        }
-        
-        device = devices[0];
-        
-        // Print device info
-        char device_name[256];
-        clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(device_name), device_name, nullptr);
-        std::cout << "Using OpenCL device: " << device_name << std::endl;
-        
-        // Create simple context (no OpenGL interop)
-        context = clCreateContext(nullptr, 1, &device, nullptr, nullptr, &err);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to create OpenCL context: " << err << std::endl;
-            return false;
-        }
-        
-        queue = clCreateCommandQueue(context, device, 0, &err);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to create OpenCL command queue: " << err << std::endl;
-            return false;
-        }
-        
-        // Load and build kernel
-        std::string kernel_source = loadKernelSource("src/opencl/mandelbrot_kernel.cl");
-        if (kernel_source.empty()) {
-            return false;
-        }
-        
-        const char* source_ptr = kernel_source.c_str();
-        size_t source_size = kernel_source.length();
-        
-        program = clCreateProgramWithSource(context, 1, &source_ptr, &source_size, &err);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to create OpenCL program: " << err << std::endl;
-            return false;
-        }
-        
-        err = clBuildProgram(program, 1, &device, nullptr, nullptr, nullptr);
-        if (err != CL_SUCCESS) {
-            size_t log_size;
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &log_size);
-            std::vector<char> log(log_size);
-            clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, log_size, log.data(), nullptr);
-            std::cerr << "OpenCL compilation error: " << log.data() << std::endl;
-            return false;
-        }
-        
-        kernel = clCreateKernel(program, "mandelbrot_buffer", &err);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to create OpenCL kernel: " << err << std::endl;
-            return false;
-        }
-        
-        // Create OpenCL buffer
-        size_t buffer_size = window_width * window_height * 4 * sizeof(float);
-        cl_buffer = clCreateBuffer(context, CL_MEM_WRITE_ONLY, buffer_size, nullptr, &err);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to create OpenCL buffer: " << err << std::endl;
             return false;
         }
         
@@ -363,18 +251,6 @@ private:
         return shader;
     }
     
-    std::string loadKernelSource(const std::string& filename) {
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            std::cerr << "Failed to open kernel file: " << filename << std::endl;
-            return "";
-        }
-        
-        std::string content((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
-        return content;
-    }
-    
     void update() {
         // Handle continuous key input for smooth movement
         double scale = 4.0 / zoom;
@@ -395,37 +271,19 @@ private:
     }
     
     void render() {
-        cl_int err;
+        // GPU computation — delegated to the shared core.
+        parallelbrot::View view;
+        view.width          = window_width;
+        view.height         = window_height;
+        view.center_x       = center_x;
+        view.center_y       = center_y;
+        view.zoom           = zoom;
+        view.max_iterations = max_iterations;
+        view.color_scheme   = color_scheme;
         
-        // Set kernel arguments
-        err  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &cl_buffer);
-        err |= clSetKernelArg(kernel, 1, sizeof(int), &window_width);
-        err |= clSetKernelArg(kernel, 2, sizeof(int), &window_height);
-        err |= clSetKernelArg(kernel, 3, sizeof(double), &center_x);
-        err |= clSetKernelArg(kernel, 4, sizeof(double), &center_y);
-        err |= clSetKernelArg(kernel, 5, sizeof(double), &zoom);
-        err |= clSetKernelArg(kernel, 6, sizeof(int), &max_iterations);
-        err |= clSetKernelArg(kernel, 7, sizeof(int), &color_scheme);
-        
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to set kernel arguments: " << err << std::endl;
-            return;
-        }
-        
-        // Execute kernel
-        size_t global_work_size[2] = {(size_t)window_width, (size_t)window_height};
-        err = clEnqueueNDRangeKernel(queue, kernel, 2, nullptr, global_work_size, nullptr, 0, nullptr, nullptr);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to execute kernel: " << err << std::endl;
-            return;
-        }
-        
-        // Read results back to CPU
-        err = clEnqueueReadBuffer(queue, cl_buffer, CL_TRUE, 0, 
-                                 cpu_buffer.size() * sizeof(float), 
-                                 cpu_buffer.data(), 0, nullptr, nullptr);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to read buffer: " << err << std::endl;
+        std::string error;
+        if (!compute.render(view, cpu_buffer.data(), &error)) {
+            std::cerr << error << std::endl;
             return;
         }
         
@@ -447,12 +305,7 @@ private:
     }
     
     void cleanup() {
-        if (kernel) clReleaseKernel(kernel);
-        if (program) clReleaseProgram(program);
-        if (queue) clReleaseCommandQueue(queue);
-        if (cl_buffer) clReleaseMemObject(cl_buffer);
-        if (context) clReleaseContext(context);
-        
+        // The OpenCL core releases its own handles in its destructor.
         if (shader_program) glDeleteProgram(shader_program);
         if (texture) glDeleteTextures(1, &texture);
         if (vbo) glDeleteBuffers(1, &vbo);
@@ -476,16 +329,7 @@ private:
         glBindTexture(GL_TEXTURE_2D, renderer->texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
         
-        // Recreate OpenCL buffer
-        if (renderer->cl_buffer) {
-            clReleaseMemObject(renderer->cl_buffer);
-        }
-        cl_int err;
-        size_t buffer_size = width * height * 4 * sizeof(float);
-        renderer->cl_buffer = clCreateBuffer(renderer->context, CL_MEM_WRITE_ONLY, buffer_size, nullptr, &err);
-        if (err != CL_SUCCESS) {
-            std::cerr << "Failed to recreate OpenCL buffer: " << err << std::endl;
-        }
+        // The OpenCL core grows its own device buffer on the next render.
     }
     
     static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
