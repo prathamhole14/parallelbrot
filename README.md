@@ -1,5 +1,9 @@
 # parallelbrot
 
+[![PyPI](https://img.shields.io/pypi/v/parallelbrot.svg)](https://pypi.org/project/parallelbrot/)
+[![Python](https://img.shields.io/pypi/pyversions/parallelbrot.svg)](https://pypi.org/project/parallelbrot/)
+[![Wheels](https://github.com/prathamhole14/parallelbrot/actions/workflows/wheels.yml/badge.svg)](https://github.com/prathamhole14/parallelbrot/actions/workflows/wheels.yml)
+
 Mandelbrot set renderer with CPU, OpenCL and CUDA backends — a Python package
 for generating fractal images, and an interactive real-time viewer.
 
@@ -15,7 +19,42 @@ pip install parallelbrot
 uv add parallelbrot
 ```
 
-Wheels are `abi3`, so one wheel per platform covers CPython 3.9 and up.
+Wheels are `abi3`, so one wheel per platform covers CPython 3.9 and up —
+the wheel is built on 3.9 and installs unchanged on 3.14.
+
+| Platform | Wheel |
+|----------|-------|
+| Linux x86_64, aarch64 | manylinux_2_28 |
+| macOS arm64 | 15.0+ |
+| macOS x86_64 | 14.0+ |
+| Windows x64 | ✅ |
+
+The macOS floors come from Homebrew's `libomp`, which the wheels bundle for
+multi-threaded rendering. On older macOS, install from source or conda-forge.
+
+---
+
+## Command line
+
+```bash
+parallelbrot                                  # 1920x1080 -> mandelbrot.png
+parallelbrot -o seahorse.png -s 3840x2160 \
+    -c -0.743644,0.131826 -z 4000 -i 1000 --colors ocean
+parallelbrot --info                           # what backends are usable here
+```
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `-o`, `--output` | `mandelbrot.png` | Output path |
+| `-s`, `--size` | `1920x1080` | `WIDTHxHEIGHT` |
+| `-c`, `--center` | `-0.5,0.0` | `REAL,IMAG` |
+| `-z`, `--zoom` | `1.0` | Magnification |
+| `-i`, `--iterations` | `128` | Escape limit |
+| `--colors` | `fire` | Palette |
+| `-b`, `--backend` | `auto` | `auto`, `cpu`, `opencl`, `cuda` |
+| `-q`, `--quiet` | | Suppress the summary line |
+
+PNG writing is built in, so the CLI needs nothing beyond NumPy.
 
 ---
 
@@ -187,8 +226,6 @@ Makefile                        Interactive viewer binaries
 
 The compute cores carry no GLFW, OpenGL or Python headers, so the same code
 serves the viewer, the Python package and the tests.
-
-See [docs/RELEASING.md](docs/RELEASING.md) for the release process.
 
 ---
 

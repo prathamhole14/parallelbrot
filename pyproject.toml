@@ -25,6 +25,9 @@ dependencies = ["numpy>=1.21"]
 [dependency-groups]
 dev = ["pytest>=7"]
 
+[project.scripts]
+parallelbrot = "parallelbrot.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/prathamhole14/parallelbrot"
 Source = "https://github.com/prathamhole14/parallelbrot"
