@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
+import struct
+import zlib
+
 import numpy as np
 
 from . import _core
@@ -11,6 +14,7 @@ from ._core import available_backends, compiled_backends, has_openmp
 
 __all__ = [
     "render",
+    "save_png",
     "available_backends",
     "compiled_backends",
     "has_openmp",
@@ -92,8 +96,43 @@ def render(
 
 
 def device_name(backend: str) -> str | None:
-    """Name of the device a GPU backend would use, or None if unavailable."""
+    """Name of the device a GPU backend would use, or None if unavailable.
+
+    A backend that was not compiled into this build has no device, so it
+    reports None rather than raising; only an unrecognised name is an error.
+    """
+    if backend not in _RENDERERS:
+        raise ValueError(f"unknown backend {backend!r}; expected one of {tuple(_RENDERERS)}")
     getter = getattr(_core, f"{backend}_device_name", None)
-    if getter is None:
-        raise ValueError(f"no device information for backend {backend!r}")
-    return getter()
+    return getter() if getter is not None else None
+
+
+def _chunk(tag: bytes, data: bytes) -> bytes:
+    return (
+        struct.pack(">I", len(data))
+        + tag
+        + data
+        + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    )
+
+
+def save_png(path: str, image: np.ndarray) -> None:
+    """Write an ``(H, W, 4)`` float array in [0, 1] as an 8-bit RGBA PNG.
+
+    Hand-rolled rather than via Pillow: it is a dozen lines against the
+    standard library, and the alternative is a dependency heavier than this
+    package purely so the CLI can save its output.
+    """
+    height, width, _ = image.shape
+    rgba = (np.clip(image, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+    # Each PNG scanline is prefixed with a filter-type byte; 0 means "none".
+    scanlines = np.hstack(
+        [np.zeros((height, 1), np.uint8), np.ascontiguousarray(rgba).reshape(height, width * 4)]
+    )
+    with open(path, "wb") as f:
+        f.write(
+            b"\x89PNG\r\n\x1a\n"
+            + _chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            + _chunk(b"IDAT", zlib.compress(scanlines.tobytes(), 6))
+            + _chunk(b"IEND", b"")
+        )

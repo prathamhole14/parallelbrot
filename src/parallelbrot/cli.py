@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import struct
 import sys
 import time
-import zlib
-
-import numpy as np
 
 from . import (
     COLOR_SCHEMES,
@@ -18,38 +14,8 @@ from . import (
     device_name,
     has_openmp,
     render,
+    save_png,
 )
-
-
-def _chunk(tag: bytes, data: bytes) -> bytes:
-    return (
-        struct.pack(">I", len(data))
-        + tag
-        + data
-        + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-    )
-
-
-def write_png(path: str, image: np.ndarray) -> None:
-    """Write an ``(H, W, 4)`` float array in [0, 1] as an 8-bit RGBA PNG.
-
-    Hand-rolled rather than via Pillow: it is a dozen lines against the
-    standard library, and the alternative is a dependency heavier than this
-    package purely so the CLI can save its output.
-    """
-    height, width, _ = image.shape
-    rgba = (np.clip(image, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
-    # Each PNG scanline is prefixed with a filter-type byte; 0 means "none".
-    scanlines = np.hstack(
-        [np.zeros((height, 1), np.uint8), np.ascontiguousarray(rgba).reshape(height, width * 4)]
-    )
-    with open(path, "wb") as f:
-        f.write(
-            b"\x89PNG\r\n\x1a\n"
-            + _chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
-            + _chunk(b"IDAT", zlib.compress(scanlines.tobytes(), 6))
-            + _chunk(b"IEND", b"")
-        )
 
 
 def _size(text: str) -> tuple[int, int]:
@@ -127,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     elapsed = time.perf_counter() - started
 
     try:
-        write_png(args.output, image)
+        save_png(args.output, image)
     except OSError as exc:
         print(f"parallelbrot: cannot write {args.output}: {exc}", file=sys.stderr)
         return 1

@@ -69,7 +69,7 @@ image = pb.render(1920, 1080)                 # (1080, 1920, 4) float32 RGBA
 Zoom in on the seahorse valley, and save it:
 
 ```python
-from PIL import Image
+import parallelbrot as pb
 
 image = pb.render(
     1920, 1080,
@@ -78,7 +78,18 @@ image = pb.render(
     max_iterations=1000,
     color_scheme="fire",
 )
-Image.fromarray((image * 255).astype("uint8")).save("seahorse.png")
+pb.save_png("seahorse.png", image)
+```
+
+`save_png` needs nothing beyond NumPy. The array is ordinary `float32`, so
+Pillow, matplotlib or imageio all work on it too if you already have them:
+
+```python
+import matplotlib.pyplot as plt
+
+plt.imshow(pb.render(800, 600, zoom=200, center=(-0.75, 0.1)))
+plt.axis("off")
+plt.show()
 ```
 
 ### `render()`
@@ -98,6 +109,8 @@ Returns an `(height, width, 4)` float32 array with values in `[0, 1]`.
 ### Choosing a backend
 
 ```python
+import parallelbrot as pb
+
 pb.available_backends()   # ('cpu',) — compiled in and a device is present
 pb.compiled_backends()    # ('cpu', 'opencl') — compiled in, device or not
 pb.device_name("opencl")  # 'NVIDIA GeForce RTX 4070' or None
@@ -110,6 +123,7 @@ back to the CPU.
 Rendering releases the GIL, so calls from separate threads run in parallel:
 
 ```python
+import parallelbrot as pb
 from concurrent.futures import ThreadPoolExecutor
 
 with ThreadPoolExecutor() as pool:                       # renders a zoom
@@ -185,11 +199,11 @@ needs `rocm-opencl-runtime` or `mesa-opencl-icd`; Intel needs
 ## Building from source
 
 ```bash
-git clone https://github.com/prathamhole/parallelbrot
+git clone https://github.com/prathamhole14/parallelbrot
 cd parallelbrot
 
 uv sync                      # venv + dev dependencies, package built editable
-uv run pytest                # 16 tests
+uv run pytest
 uv run python -c "import parallelbrot as p; print(p.compiled_backends())"
 ```
 

@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 import parallelbrot as pb
-from parallelbrot.cli import main, write_png
+from parallelbrot import save_png
+from parallelbrot.cli import main
 
 
 def read_png(path):
@@ -42,7 +43,7 @@ def test_default_run_writes_a_png(tmp_path, capsys):
 def test_png_matches_the_rendered_array(tmp_path):
     image = pb.render(32, 24, zoom=10.0, color_scheme="ocean")
     out = tmp_path / "rt.png"
-    write_png(str(out), image)
+    save_png(str(out), image)
     _, _, _, _, pixels = read_png(out)
     assert np.array_equal(pixels, (np.clip(image, 0, 1) * 255.0 + 0.5).astype(np.uint8))
 

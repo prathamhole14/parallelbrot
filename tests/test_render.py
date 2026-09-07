@@ -70,3 +70,12 @@ def test_gpu_matches_cpu(backend):
 def test_auto_backend_is_available():
     assert pb.render(8, 8, backend="auto").shape == (8, 8, 4)
     assert set(pb.available_backends()) <= set(pb.compiled_backends())
+
+
+def test_device_name_is_none_for_uncompiled_backends():
+    """The README shows device_name() returning None, not raising."""
+    for backend in ("cpu", "opencl", "cuda"):
+        name = pb.device_name(backend)
+        assert name is None or isinstance(name, str)
+    with pytest.raises(ValueError):
+        pb.device_name("vulkan")
