@@ -22,6 +22,9 @@ __pycache__/
 .pytest_cache/
 build-install/
 
+# Local agent notes, not tracked
+CLAUDE.md
+
 # IDE files
 .vscode/
 .idea/

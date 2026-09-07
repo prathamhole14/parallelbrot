@@ -34,5 +34,41 @@ Source = "https://github.com/prathamhole/parallelbrot"
 # only names the file; this is what meson-python reads to set the tag.
 limited-api = true
 
-[tool.meson-python.args]
-setup = ["-Dopencl=auto", "-Dopenmp=auto"]
+[tool.cibuildwheel]
+# One cp39-abi3 wheel per platform covers 3.9 onwards. The interpreter tag
+# follows the building Python, so this must stay pinned to the oldest
+# supported version — building on 3.13 would emit cp313-abi3, which pip
+# refuses to install on anything older.
+build = "cp39-*"
+skip = "*_i686 *-win32 *-musllinux_*"
+build-frontend = "build"
+
+# OpenCL is deliberately left out of PyPI wheels. Linking it adds a hard
+# NEEDED entry on libOpenCL.so.1, so `import parallelbrot` would fail on any
+# machine without an ICD loader, including CPU-only users. The GPU backends
+# ship via conda-forge, where the loader is a declarable dependency.
+config-settings = { setup-args = "-Dopencl=disabled" }
+
+test-requires = "pytest"
+test-command = [
+    "pytest {project}/tests",
+    "python -c \"import parallelbrot as p; print(p.compiled_backends(), 'openmp=', p.has_openmp())\"",
+]
+
+[tool.cibuildwheel.linux]
+# manylinux ships GCC, so libgomp is present; auditwheel vendors it into the
+# wheel. No excludes needed once OpenCL is out of the picture.
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.macos]
+# Apple Clang has no built-in OpenMP. Without libomp the build still succeeds
+# (the feature is `auto`) but renders single-threaded, so install it and let
+# delocate vendor it into the wheel.
+before-all = "brew install libomp"
+environment = { MACOSX_DEPLOYMENT_TARGET = "10.13" }
+
+[tool.cibuildwheel.windows]
+# cibuildwheel does not repair Windows wheels by default.
+before-build = "pip install delvewheel"
+repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel}"
