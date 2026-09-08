@@ -208,23 +208,53 @@ needs `rocm-opencl-runtime` or `mesa-opencl-icd`; Intel needs
 git clone https://github.com/prathamhole14/parallelbrot
 cd parallelbrot
 
-uv sync                      # venv + dev dependencies, package built editable
+uv venv
+uv pip install meson meson-python ninja    # must exist in the venv itself
+uv sync                                    # editable install + dev dependencies
+
 uv run pytest
-uv run python -c "import parallelbrot as p; print(p.compiled_backends())"
+uv run parallelbrot --info
 ```
 
 Without uv:
 
 ```bash
+python -m venv .venv && . .venv/bin/activate
 pip install -U meson meson-python ninja
-pip install -e . --no-build-isolation    # rebuilds the C++ on import
+pip install -e . --no-build-isolation
 pytest
 ```
 
-`--no-build-isolation` matters. A plain `pip install -e .` records the path to
-the `ninja` inside pip's temporary build environment, which pip then deletes,
-so every later import fails with `FileNotFoundError: .../pip-build-env-*/ninja`.
-Reinstall with the flag above to repair it.
+### Why the build tools go in the environment
+
+An editable install of a Meson project keeps rebuilding itself: `build.ninja`
+records the path of the `meson` that configured it, and re-runs it whenever a
+source file changes. Installed the usual way, that path points inside the
+installer's *temporary* build environment, which is deleted as soon as the
+install finishes. Every later import then fails:
+
+```
+/home/you/.cache/uv/builds-v0/.tmpXXXX/bin/meson: not found
+ImportError: rebuilding the "parallelbrot" editable package failed
+```
+
+pip does the same thing with `/tmp/pip-build-env-*`. Both are fixed the same
+way: put `meson`, `meson-python` and `ninja` in the target environment and
+build without isolation, so the recorded path still exists afterwards. This
+project sets `no-build-isolation-package` in `[tool.uv]` so `uv sync` does
+that automatically once the tools are present — which is why they are
+installed first above.
+
+To repair an environment already in this state:
+
+```bash
+rm -rf build
+uv sync --reinstall-package parallelbrot     # or: pip install -e . --no-build-isolation
+```
+
+`--reinstall-package` is needed because uv will otherwise relink a cached copy
+of a previous editable install and skip the build, leaving no `build/`
+directory for the rebuild hook to use.
 
 Build options are Meson features, so absent tooling degrades the build rather
 than failing it:

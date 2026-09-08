@@ -26,7 +26,24 @@ dependencies = ["numpy>=1.21"]
 viewer = ["matplotlib>=3.5"]
 
 [dependency-groups]
-dev = ["pytest>=7", "matplotlib>=3.5"]
+# meson, meson-python and ninja are dev dependencies, not just build
+# requirements: with [tool.uv] below they must exist in the project
+# environment so the editable rebuild hook can still find them afterwards.
+dev = [
+    "pytest>=7",
+    "matplotlib>=3.5",
+    "meson>=1.3",
+    "meson-python>=0.15",
+    "ninja",
+]
+
+[tool.uv]
+# meson-python records the path of the meson that configured the build inside
+# build.ninja, and re-runs it on import when sources change. Under build
+# isolation that path is a temporary directory the installer deletes, so every
+# later import dies with "meson: not found". Building in the project
+# environment keeps the recorded path valid.
+no-build-isolation-package = ["parallelbrot"]
 
 [project.scripts]
 parallelbrot = "parallelbrot.cli:main"
